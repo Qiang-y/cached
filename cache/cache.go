@@ -1,12 +1,12 @@
-package cached
+package cache
 
 import (
-	"github.com/Qiang-y/cached/lru"
+	"github.com/Qiang-y/cached/cache/lru"
 	"sync"
 )
 
 type cache struct {
-	mu         *sync.Mutex
+	mu         sync.Mutex
 	lru        *lru.Cache
 	cacheBytes int64
 }
