@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"log"
 	"sync"
 )
 
@@ -20,6 +21,7 @@ type Group struct {
 	name      string
 	getter    Getter
 	mainCache cache
+	peers     PeerPicker
 }
 
 var (
@@ -64,12 +66,29 @@ func (g *Group) Get(key string) (ByteView, error) {
 	return g.load(key)
 }
 
-// 当缓存中不存在数据时从别处获取数据,如别的节点(分布式场景), 或数据源
-func (g *Group) load(key string) (ByteView, error) {
+// RegisterPeers 注册一个PeerPicker以选择远程节点
+func (g *Group) RegisterPeers(peers PeerPicker) {
+	if g.peers != nil {
+		panic("RegisterPeerPicker called more than once")
+	}
+	g.peers = peers
+}
+
+// 当缓存中不存在数据时先尝试从对等节点获取,其次尝试本地数据源
+func (g *Group) load(key string) (value ByteView, err error) {
+	if g.peers != nil {
+		if pick, ok := g.peers.PeerPicker(key); ok {
+			if value, err = g.getFromPeer(pick, key); err != nil {
+				return value, nil
+			}
+			log.Println("[GeeCache] Failed to get from peer", err)
+		}
+	}
+
 	return g.getLocally(key)
 }
 
-// 从别处获取数据
+// 从本地处获取数据
 func (g *Group) getLocally(key string) (ByteView, error) {
 	bytes, err := g.getter.Get(key)
 	if err != nil {
@@ -78,6 +97,15 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 	value := ByteView{cloneBytes(bytes)}
 	g.populateCache(key, value)
 	return value, nil
+}
+
+// 从远程对等节点上获取数据
+func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+	bytes, err := peer.Get(g.name, key)
+	if err != nil {
+		return ByteView{}, err
+	}
+	return ByteView{b: bytes}, nil
 }
 
 // 插入缓存
