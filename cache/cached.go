@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"github.com/Qiang-y/cached/cache/singlefilght"
 	"log"
 	"sync"
 )
@@ -22,6 +23,7 @@ type Group struct {
 	getter    Getter
 	mainCache cache
 	peers     PeerPicker
+	loader    *singlefilght.Group
 }
 
 var (
@@ -41,6 +43,7 @@ func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 		mainCache: cache{
 			cacheBytes: cacheBytes,
 		},
+		loader: &singlefilght.Group{},
 	}
 	groups[name] = g
 	return g
@@ -76,16 +79,23 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 
 // 当缓存中不存在数据时先尝试从对等节点获取,其次尝试本地数据源
 func (g *Group) load(key string) (value ByteView, err error) {
-	if g.peers != nil {
-		if pick, ok := g.peers.PeerPicker(key); ok {
-			if value, err = g.getFromPeer(pick, key); err == nil {
-				return value, nil
+	viewi, err := g.loader.Do(key, func() (interface{}, error) {
+		if g.peers != nil {
+			if pick, ok := g.peers.PeerPicker(key); ok {
+				if value, err = g.getFromPeer(pick, key); err == nil {
+					return value, nil
+				}
+				log.Println("[GeeCache] Failed to get from peer", err)
 			}
-			log.Println("[GeeCache] Failed to get from peer", err)
 		}
-	}
 
-	return g.getLocally(key)
+		return g.getLocally(key)
+	})
+
+	if err == nil {
+		return viewi.(ByteView), nil
+	}
+	return
 }
 
 // 从本地处获取数据
