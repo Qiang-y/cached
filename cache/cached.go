@@ -78,7 +78,7 @@ func (g *Group) RegisterPeers(peers PeerPicker) {
 func (g *Group) load(key string) (value ByteView, err error) {
 	if g.peers != nil {
 		if pick, ok := g.peers.PeerPicker(key); ok {
-			if value, err = g.getFromPeer(pick, key); err != nil {
+			if value, err = g.getFromPeer(pick, key); err == nil {
 				return value, nil
 			}
 			log.Println("[GeeCache] Failed to get from peer", err)
