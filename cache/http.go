@@ -2,7 +2,9 @@ package cache
 
 import (
 	"fmt"
+	"github.com/Qiang-y/cached/cache/cachepb"
 	"github.com/Qiang-y/cached/cache/consistenthash"
+	"google.golang.org/protobuf/proto"
 	"io"
 	"log"
 	"net/http"
@@ -91,8 +93,15 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	body, err := proto.Marshal(&cachepb.Response{Value: value.ByteSlice()})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Write(value.ByteSlice())
+	w.Write(body)
 }
 
 // HTTP 客户端
@@ -100,27 +109,31 @@ type httpGetter struct {
 	baseURL string // 表示要访问的远程节点地址
 }
 
-func (h *httpGetter) Get(group string, key string) ([]byte, error) {
+func (h *httpGetter) Get(req *cachepb.Request, res *cachepb.Response) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
-		url.QueryEscape(group),
-		url.QueryEscape(key),
+		url.QueryEscape(req.GetGroup()),
+		url.QueryEscape(req.GetKey()),
 	)
 	resp, err := http.Get(u)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("server return code: %v", resp.StatusCode)
+		return fmt.Errorf("server return code: %v", resp.StatusCode)
 	}
 
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response body: %v", err)
+		return fmt.Errorf("reading response body: %v", err)
 	}
 
-	return bytes, nil
+	if err = proto.Unmarshal(bytes, res); err != nil {
+		return fmt.Errorf("decoding response body: %v", err)
+	}
+
+	return nil
 }

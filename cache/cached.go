@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"github.com/Qiang-y/cached/cache/cachepb"
 	"github.com/Qiang-y/cached/cache/singlefilght"
 	"log"
 	"sync"
@@ -111,11 +112,16 @@ func (g *Group) getLocally(key string) (ByteView, error) {
 
 // 从远程对等节点上获取数据
 func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
-	bytes, err := peer.Get(g.name, key)
+	req := &cachepb.Request{
+		Group: g.name,
+		Key:   key,
+	}
+	res := &cachepb.Response{}
+	err := peer.Get(req, res)
 	if err != nil {
 		return ByteView{}, err
 	}
-	return ByteView{b: bytes}, nil
+	return ByteView{b: res.Value}, nil
 }
 
 // 插入缓存
